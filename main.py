@@ -187,40 +187,33 @@ class WidestRangeStrategy(Strategy):
     # heuristic attempts to preserve the largest range per stack category
     # (up/down).  This should capture what one means when they say "play on two
     # stacks for as long as possible."
-    up_ranges = []
-    down_ranges = []
+    move_is_up = stacks[move[1]].is_up
+    ranges_for_type = []
     for r, s in zip(ranges, stacks):
-      if s.is_up:
-        up_ranges.append(r)
-      else:
-        down_ranges.append(r)
+      if s.is_up == move_is_up:
+        ranges_for_type.append(r)
 
-    return self.union_size(up_ranges)**2 + self.union_size(down_ranges)**2
+    assert len(ranges_for_type) == 2  # Only handle 2 for now.
+    score = 0
+    score += self.range_len_sum(ranges_for_type)**2
+    # The factor with the difference in range_sizes should keep us on one stack
+    # as long as possible.
+    # (50, 0), (51, 0) = undesirable, adds 1 to the score
+    # (99, 0), (50, 0) = desirable, adds 49^2 to the score
+    # Squaring this might be useful but empirically gives worse results.
+    score += abs(self.range_len(ranges_for_type[0]) - self.range_len(ranges_for_type[1]))
+    return score
   
+  def range_len_sum(self, ranges):
+    """Returns sum of range lengths.
 
-  def union_size(self, ranges):
-    """Returns the size of the union of two intervals.
-
-    Essentially, all this could easily be done by adding to sets, but we are
-    running into performance issues, and arithmetic is much, much faster than
-    inserting into sets.
+    All this could easily be done by sets, but we are running into performance
+    issues, and arithmetic is much, much faster than inserting into sets.
     """
-    assert len(ranges) == 2
-    result = (self.range_len(ranges[0]) + self.range_len(ranges[1])
-                  - self.get_overlap_size(ranges[0], ranges[1]))
-    return result
-
+    return sum(self.range_len(r) for r in ranges)
 
   def range_len(self, r):
     return r[1] - r[0] 
-  
-
-  def get_overlap_size(self, r0, r1):
-    """Returns the amount of overlap between two ranges."""
-    if r0[0] > r1[1] or r1[0] > r0[1]:
-      return 0
-    return min(r0[1], r1[1]) - max(r0[0], r1[0])
-
 
   def get_range_interval(self, stack):
     """Returns the range of cards still available on a stack as a tuple, inclusive ends.
@@ -248,7 +241,14 @@ class WidestRangeStrategy(Strategy):
     else:
       return set(xrange(LOWEST_CARD, current_top))
 
-    
+
+  def get_overlap_size(self, r0, r1):
+    """Returns the amount of overlap between two ranges."""
+    if r0[0] > r1[1] or r1[0] > r0[1]:
+      return 0
+    return min(r0[1], r1[1]) - max(r0[0], r1[0])
+
+
 def get_strategy(name):
   """Maps name string to a new instance of Strategy (which may be stateful)."""
   if name == "dumb":
@@ -260,7 +260,7 @@ def get_strategy(name):
   raise ValueError("Unknown strategy: %s" % name)
 
 
-def evaluate_strategies(strategy_names, num_evaluations=1000):
+def evaluate_strategies(strategy_names, num_evaluations=1500):
   """Evaluates instances of Strategy classes and compares them."""
   scores = {}
   for name in strategy_names:

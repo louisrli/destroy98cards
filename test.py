@@ -31,19 +31,19 @@ class TestRangeFunctions(unittest.TestCase):
     overlap_left = ((5, 20), (15, 70))
     self.assertEqual(s.get_overlap_size(*overlap_left), 5)
 
-  def test_union_size(self):
+  def test_range_len_sum(self):
     s = main.WidestRangeStrategy()
     not_overlap = ((1, 10), (12, 80))
-    self.assertEqual(s.union_size(not_overlap), (10 - 1) + (80 - 12))
+    self.assertEqual(s.range_len_sum(not_overlap), 9 + 68)
 
     contained = ((10, 80), (30, 50))
-    self.assertEqual(s.union_size(contained), 80 - 10)
+    self.assertEqual(s.range_len_sum(contained), 70 + 20)
 
     overlap_right = ((10, 80), (20, 90))
-    self.assertEqual(s.union_size(overlap_right), 90 - 10)
+    self.assertEqual(s.range_len_sum(overlap_right), 70 + 70)
     
     overlap_left = ((5, 20), (15, 70))
-    self.assertEqual(s.union_size(overlap_left), 70 - 5)
+    self.assertEqual(s.range_len_sum(overlap_left), 15 + 55)
 
 if __name__ == '__main__':
   unittest.main()
