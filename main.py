@@ -119,7 +119,8 @@ class DumbStrategy():
 class GreedyDifferenceStrategy():
   """Greedy difference strategy.
 
-  For a set of moves, pick the one that results in the lowest resulting stack difference. e.g., putting a 95 on a 98 down-stack is a stack difference of 3.
+  For a set of moves, pick the one that results in the lowest resulting stack
+  difference. e.g., putting a 95 on a 98 down-stack is a stack difference of 3.
 
   Still doesn't take into account cards remaining or keeping one stack low
   (although it may automatically do this).
@@ -147,7 +148,7 @@ class GreedyDifferenceStrategy():
     return max(zip(valid_moves, scores), key=lambda t: t[1])[0]
 
 def get_strategy(name):
-  """Maps name string to strategy."""
+  """Maps name string to a new instance of Strategy (which may be stateful)."""
   if name == "dumb":
     return DumbStrategy()
   elif name == "greedydiff":
