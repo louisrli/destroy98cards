@@ -1,3 +1,4 @@
+from collections import Counter
 import logging
 import random
 from optparse import OptionParser
@@ -112,7 +113,11 @@ def play_game(strategy, seed=None):
           hand.add(deck.pop())
 
 class Strategy():
-  """Abstract superclass that picks the highest scoring move."""
+  """Abstract superclass that picks the highest scoring move.
+  
+  Note that this only works assuming we pick one move ahead, but actually we
+  probably want to factor in the two best moves, or the n best move chain using
+  rule of 10s."""
   def get_move(self, valid_moves, hand, stacks, deck):
     scores = [self.score_move(v, hand, stacks, deck) for v in valid_moves]
     return max(zip(valid_moves, scores), key=lambda t: t[1])[0]
@@ -162,19 +167,7 @@ class WidestRangeStrategy(Strategy):
   95). However, the widest range is computed across all stacks; this means that
   if it reduces the range that can be handled by another stack, then the move
   is not penalized as much.
-
-  If `keep_duplicates` is true, then scoring will consider not consider ranges
-  as a set. The score of a move will be sum(len(stack_range)) across stacks.
-
-  If it is false, then the score of a move will be sum(len(stack_range_set)),
-  where stack_range_set is the set of numbers in the range of any stack.
-
-  The difference is that `keep_duplicates` is True cares for how many stacks a
-  number is still available.  False only cares if there is *at least* one stack
-  that can handle a number
   """
-  def __init__(self, keep_duplicates):
-    self.keep_duplicates = keep_duplicates
 
   def score_move(self, move, hand, stacks, deck):
     # Get the range of each stack, projecting the new stack for the candidate
@@ -190,13 +183,31 @@ class WidestRangeStrategy(Strategy):
       else:
         ranges.append(self.get_range(s))
 
-    if self.keep_duplicates:
-      return sum(len(r) for r in ranges) ** 2
+    # For each number, count the number of stacks remaining that can handle
+    # that number. Square it to favor higher numbers.
+    count = Counter()
+    for r in ranges:
+      for n in r:
+        count[n] += 1
+    return sum(n**2 for n in count.itervalues())
+
+
+  def get_range_interval(self, stack):
+    """Returns the range of cards still available on a stack as a tuple, inclusive ends.
+    
+    This is a faster version of get_range() but less easy to reason about (performance
+    started becoming an issue with the set manipulation)."""
+    if len(stack.cards) == 0:
+     current_top = LOWEST_CARD - 1 if stack.is_up else HIGHEST_CARD + 1
     else:
-      # Union all sets, then return length.
-      return len(frozenset().union(*ranges)) ** 2
+     current_top = stack.cards[-1]
+    if stack.is_up:
+      return (current_top + 1, HIGHEST_CARD)
+    else:
+      return (LOWEST_CARD, current_top - 1)
 
   def get_range(self, stack):
+    """Returns the range of cards still available on a stack as a set."""
     if len(stack.cards) == 0:
      current_top = LOWEST_CARD if stack.is_up else HIGHEST_CARD
     else:
@@ -214,10 +225,8 @@ def get_strategy(name):
     return DumbStrategy()
   elif name == "greedydiff":
     return GreedyDifferenceStrategy()
-  elif name == "widestdupe":
-    return WidestRangeStrategy(True)
-  elif name == "widestnodupe":
-    return WidestRangeStrategy(False)
+  elif name == "widest":
+    return WidestRangeStrategy()
   raise ValueError("Unknown strategy: %s" % name)
 
 def evaluate_strategies(strategy_names, num_evaluations=1000):
@@ -257,7 +266,7 @@ def main():
   if options.strategy:
     strategy_names = options.strategy.split(',')
   else:
-    strategy_names = ["dumb", "greedydiff", "widestnodupe", "widestdupe"]
+    strategy_names = ["dumb", "greedydiff", "widest"]
 
   if options.evaluate:
     logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
