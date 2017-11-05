@@ -111,12 +111,21 @@ def play_game(strategy, seed=None):
         if len(deck) > 0:
           hand.add(deck.pop())
 
-class DumbStrategy():
+class Strategy():
+  """Abstract superclass that picks the highest scoring move."""
+  def get_move(self, valid_moves, hand, stacks, deck):
+    scores = [self.score_move(v, hand, stacks, deck) for v in valid_moves]
+    return max(zip(valid_moves, scores), key=lambda t: t[1])[0]
+
+  def score_move(self, move, hand, stacks, deck):
+    raise Exception("Abstract method.")
+
+class DumbStrategy(Strategy):
   """Dumb strategy that just takes the first card to test if things work."""
   def get_move(self, valid_moves, hand, stacks, deck):
     return next(iter(valid_moves))
 
-class GreedyDifferenceStrategy():
+class GreedyDifferenceStrategy(Strategy):
   """Greedy difference strategy.
 
   For a set of moves, pick the one that results in the lowest resulting stack
@@ -125,27 +134,79 @@ class GreedyDifferenceStrategy():
   Still doesn't take into account cards remaining or keeping one stack low
   (although it may automatically do this).
   """
-  def get_move(self, valid_moves, hand, stacks, deck):
+  def score_move(self, move, hand, stacks, deck):
+    stack = stacks[move[1]]
+    # Treat value of empty stacks as highest or lowest card. This means that
+    # initializing a downstack with 99 would have score 0, which is better
+    # than adding to any existing stack (except by rule of 10s).
+    if len(stack.cards) == 0:
+      current_top = LOWEST_CARD if stack.is_up else HIGHEST_CARD
+    else:
+      current_top = stack.cards[-1]
+
     # Higher score is good. Score can be thought of as the effect on the
     # remaining range of a stack.
-    scores = []
-    for v in valid_moves:
-      stack = stacks[v[1]]
-      # Treat value of empty stacks as highest or lowest card. This means that
-      # initializing a downstack with 99 would have score 0, which is better
-      # than adding to any existing stack (except by rule of 10s).
-      if len(stack.cards) == 0:
-        current_top = HIGHEST_CARD if stack.is_up else LOWEST_CARD
+    # Score is reversed depending on whether stack is up or down.
+    score = move[0] - current_top  # Down-stack score.
+    if stack.is_up:
+      score *= -1
+    return score
+
+class WidestRangeStrategy(Strategy):
+  """Widest range strategy.
+
+  Still greedy in the sense that it only looks one move ahead.
+
+  Returns the move that preserves the "widest range." For example, adding a
+  95 to a 98 down-stack reduces the range of that stack from [2, 98) to [2,
+  95). However, the widest range is computed across all stacks; this means that
+  if it reduces the range that can be handled by another stack, then the move
+  is not penalized as much.
+
+  If `keep_duplicates` is true, then scoring will consider not consider ranges
+  as a set. The score of a move will be sum(len(stack_range)) across stacks.
+
+  If it is false, then the score of a move will be sum(len(stack_range_set)),
+  where stack_range_set is the set of numbers in the range of any stack.
+
+  The difference is that `keep_duplicates` is True cares for how many stacks a
+  number is still available.  False only cares if there is *at least* one stack
+  that can handle a number
+  """
+  def __init__(self, keep_duplicates):
+    self.keep_duplicates = keep_duplicates
+
+  def score_move(self, move, hand, stacks, deck):
+    # Get the range of each stack, projecting the new stack for the candidate
+    # card to be added. Copying a stack is not memory efficient but easier to
+    # reason about.
+    ranges = []
+    for i, s in enumerate(stacks):
+      if i == move[1]:
+        # Simulated stack with the card on top
+        simulated_stack = Stack(s.is_up)
+        simulated_stack.cards = [move[0]]
+        ranges.append(self.get_range(simulated_stack))
       else:
-        current_top = stack.cards[-1]
+        ranges.append(self.get_range(s))
 
-      # Score is reversed depending on whether stack is up or down.
-      score = v[0] - current_top  # Down-stack score.
-      if stack.is_up:
-        score *= -1
+    if self.keep_duplicates:
+      return sum(len(r) for r in ranges) ** 2
+    else:
+      # Union all sets, then return length.
+      return len(frozenset().union(*ranges)) ** 2
 
-      scores.append(score)
-    return max(zip(valid_moves, scores), key=lambda t: t[1])[0]
+  def get_range(self, stack):
+    if len(stack.cards) == 0:
+     current_top = LOWEST_CARD if stack.is_up else HIGHEST_CARD
+    else:
+     current_top = stack.cards[-1]
+    if stack.is_up:
+      return set(xrange(current_top + 1, HIGHEST_CARD + 1))
+    else:
+      return set(xrange(LOWEST_CARD, current_top))
+
+    
 
 def get_strategy(name):
   """Maps name string to a new instance of Strategy (which may be stateful)."""
@@ -153,6 +214,10 @@ def get_strategy(name):
     return DumbStrategy()
   elif name == "greedydiff":
     return GreedyDifferenceStrategy()
+  elif name == "widestdupe":
+    return WidestRangeStrategy(True)
+  elif name == "widestnodupe":
+    return WidestRangeStrategy(False)
   raise ValueError("Unknown strategy: %s" % name)
 
 def evaluate_strategies(strategy_names, num_evaluations=1000):
@@ -189,13 +254,17 @@ def main():
 
   options, _ = parser.parse_args()
 
-  strategy_names = options.strategy or ["dumb", "greedydiff"]
+  if options.strategy:
+    strategy_names = options.strategy.split(',')
+  else:
+    strategy_names = ["dumb", "greedydiff", "widestnodupe", "widestdupe"]
+
   if options.evaluate:
     logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
     evaluate_strategies(strategy_names)
   elif options.strategy:
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)s %(message)s')
-    num_left = play_game(get_strategy(options.strategy))
+    num_left = play_game(get_strategy(strategy_names[0]))
     logging.debug("Lost: %d", num_left)
 
 if __name__ == '__main__':
