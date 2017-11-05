@@ -197,6 +197,7 @@ class WidestRangeStrategy(Strategy):
 
     return self.union_size(up_ranges)**2 + self.union_size(down_ranges)**2
   
+
   def union_size(self, ranges):
     """Returns the size of the union of two intervals.
 
@@ -209,9 +210,11 @@ class WidestRangeStrategy(Strategy):
                   - self.get_overlap_size(ranges[0], ranges[1]))
     return result
 
+
   def range_len(self, r):
     return r[1] - r[0] 
   
+
   def get_overlap_size(self, r0, r1):
     """Returns the amount of overlap between two ranges."""
     if r0[0] > r1[1] or r1[0] > r0[1]:
@@ -233,6 +236,7 @@ class WidestRangeStrategy(Strategy):
     else:
       return (LOWEST_CARD, current_top - 1)
 
+
   def get_range(self, stack):
     """Returns the range of cards still available on a stack as a set."""
     if len(stack.cards) == 0:
@@ -245,7 +249,6 @@ class WidestRangeStrategy(Strategy):
       return set(xrange(LOWEST_CARD, current_top))
 
     
-
 def get_strategy(name):
   """Maps name string to a new instance of Strategy (which may be stateful)."""
   if name == "dumb":
@@ -255,6 +258,7 @@ def get_strategy(name):
   elif name == "widest":
     return WidestRangeStrategy()
   raise ValueError("Unknown strategy: %s" % name)
+
 
 def evaluate_strategies(strategy_names, num_evaluations=1000):
   """Evaluates instances of Strategy classes and compares them."""
