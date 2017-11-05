@@ -162,11 +162,11 @@ class WidestRangeStrategy(Strategy):
 
   Still greedy in the sense that it only looks one move ahead.
 
-  Returns the move that preserves the "widest range." For example, adding a
-  95 to a 98 down-stack reduces the range of that stack from [2, 98) to [2,
-  95). However, the widest range is computed across all stacks; this means that
-  if it reduces the range that can be handled by another stack, then the move
-  is not penalized as much.
+  Returns the move that preserves the "widest range." For example, adding a 95
+  to a 98 down-stack reduces the range of that stack from [2, 98) to [2, 95).
+  It tries to optimize the widest range across stacks of a certain type. For
+  example, if the move being evaluated is to put it on the up-stack, it will
+  score based on the range width of all up-stacks.
   """
 
   def score_move(self, move, hand, stacks, deck):
@@ -228,19 +228,6 @@ class WidestRangeStrategy(Strategy):
       return (current_top + 1, HIGHEST_CARD)
     else:
       return (LOWEST_CARD, current_top - 1)
-
-
-  def get_range(self, stack):
-    """Returns the range of cards still available on a stack as a set."""
-    if len(stack.cards) == 0:
-     current_top = LOWEST_CARD if stack.is_up else HIGHEST_CARD
-    else:
-     current_top = stack.cards[-1]
-    if stack.is_up:
-      return set(xrange(current_top + 1, HIGHEST_CARD + 1))
-    else:
-      return set(xrange(LOWEST_CARD, current_top))
-
 
   def get_overlap_size(self, r0, r1):
     """Returns the amount of overlap between two ranges."""
