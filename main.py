@@ -1,5 +1,8 @@
 import logging
 import random
+from optparse import OptionParser
+import pandas as pd
+
 
 LOWEST_CARD = 2
 HIGHEST_CARD = 99
@@ -63,7 +66,7 @@ def format_board(stacks, hand, next_move):
 
   hand_str = list(
     highlight(str(n)) if n == move_card else str(n) for n in hand)
-  out += ' '.join(sorted(hand_str))
+  out += ' '.join(hand_str)
   out += '\n'
   return out
 
@@ -77,6 +80,7 @@ def play_game(strategy, seed=None):
   Returns:
     The number of cards remaining in the deck with no moves left.
   """
+  logging.debug("Strategy: %s", strategy)
   random.seed(seed)
   deck = list(xrange(LOWEST_CARD, HIGHEST_CARD + 1))
   random.shuffle(deck)
@@ -104,17 +108,94 @@ def play_game(strategy, seed=None):
     hand.remove(best_card)
     if HAND_SIZE - len(hand) == REDRAW_MARGIN and len(deck) > 0:
       for _ in xrange(REDRAW_MARGIN):
-        hand.add(deck.pop())
+        if len(deck) > 0:
+          hand.add(deck.pop())
 
 class DumbStrategy():
   """Dumb strategy that just takes the first card to test if things work."""
   def get_move(self, valid_moves, hand, stacks, deck):
     return next(iter(valid_moves))
 
+class GreedyDifferenceStrategy():
+  """Greedy difference strategy.
+
+  For a set of moves, pick the one that results in the lowest resulting stack difference. e.g., putting a 95 on a 98 down-stack is a stack difference of 3.
+
+  Still doesn't take into account cards remaining or keeping one stack low
+  (although it may automatically do this).
+  """
+  def get_move(self, valid_moves, hand, stacks, deck):
+    # Higher score is good. Score can be thought of as the effect on the
+    # remaining range of a stack.
+    scores = []
+    for v in valid_moves:
+      stack = stacks[v[1]]
+      # Treat value of empty stacks as highest or lowest card. This means that
+      # initializing a downstack with 99 would have score 0, which is better
+      # than adding to any existing stack (except by rule of 10s).
+      if len(stack.cards) == 0:
+        current_top = HIGHEST_CARD if stack.is_up else LOWEST_CARD
+      else:
+        current_top = stack.cards[-1]
+
+      # Score is reversed depending on whether stack is up or down.
+      score = v[0] - current_top  # Down-stack score.
+      if stack.is_up:
+        score *= -1
+
+      scores.append(score)
+    return max(zip(valid_moves, scores), key=lambda t: t[1])[0]
+
+def get_strategy(name):
+  """Maps name string to strategy."""
+  if name == "dumb":
+    return DumbStrategy()
+  elif name == "greedydiff":
+    return GreedyDifferenceStrategy()
+  raise ValueError("Unknown strategy: %s" % name)
+
+def evaluate_strategies(strategy_names, num_evaluations=1000):
+  """Evaluates instances of Strategy classes and compares them."""
+  scores = {}
+  for name in strategy_names:
+    logging.info("Evaluating %s", name)
+    scores[name] = []
+    for seed in xrange(num_evaluations):
+      strategy = get_strategy(name)
+      scores[name].append(play_game(strategy, seed))
+
+
+  scores_df = pd.DataFrame.from_dict(scores)
+  num_cards = HIGHEST_CARD + LOWEST_CARD - 1
+  result_df = pd.DataFrame()
+  for c in scores_df: 
+    column = scores_df[c]
+    below10 = column[column < 10].size / float(num_cards)
+    result_df = result_df.append(
+      pd.DataFrame([[c, column.min(), below10, column.mean(), column.std()]],
+                   columns=["name", "best_score", "below10", "mean", "std"]), ignore_index=True)
+  logging.info("\n%s", result_df)
+
+
 def main():
-  logging.basicConfig(level=logging.DEBUG, format='%(levelname)s %(message)s')
-  num_left = play_game(DumbStrategy())
-  logging.debug("Lost: %d", num_left)
+  parser = OptionParser()
+  parser.add_option("--evaluate", dest="evaluate",
+                    help="Runs an 1000-game evaluation of the strategy",
+                    action="store_true")
+  parser.add_option("--strategy", dest="strategy",
+                    help="Comma separated strategies to evaluate. If not set, all are evaluated.",
+                    metavar="STRATEGY")
+
+  options, _ = parser.parse_args()
+
+  strategy_names = options.strategy or ["dumb", "greedydiff"]
+  if options.evaluate:
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
+    evaluate_strategies(strategy_names)
+  elif options.strategy:
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s %(message)s')
+    num_left = play_game(get_strategy(options.strategy))
+    logging.debug("Lost: %d", num_left)
 
 if __name__ == '__main__':
   main()
