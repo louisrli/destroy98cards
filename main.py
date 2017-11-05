@@ -179,17 +179,44 @@ class WidestRangeStrategy(Strategy):
         # Simulated stack with the card on top
         simulated_stack = Stack(s.is_up)
         simulated_stack.cards = [move[0]]
-        ranges.append(self.get_range(simulated_stack))
+        ranges.append(self.get_range_interval(simulated_stack))
       else:
-        ranges.append(self.get_range(s))
+        ranges.append(self.get_range_interval(s))
 
-    # For each number, count the number of stacks remaining that can handle
-    # that number. Square it to favor higher numbers.
-    count = Counter()
-    for r in ranges:
-      for n in r:
-        count[n] += 1
-    return sum(n**2 for n in count.itervalues())
+    # This code works specifically for two up/down stacks.  The current
+    # heuristic attempts to preserve the largest range per stack category
+    # (up/down).  This should capture what one means when they say "play on two
+    # stacks for as long as possible."
+    up_ranges = []
+    down_ranges = []
+    for r, s in zip(ranges, stacks):
+      if s.is_up:
+        up_ranges.append(r)
+      else:
+        down_ranges.append(r)
+
+    return self.union_size(up_ranges)**2 + self.union_size(down_ranges)**2
+  
+  def union_size(self, ranges):
+    """Returns the size of the union of two intervals.
+
+    Essentially, all this could easily be done by adding to sets, but we are
+    running into performance issues, and arithmetic is much, much faster than
+    inserting into sets.
+    """
+    assert len(ranges) == 2
+    result = (self.range_len(ranges[0]) + self.range_len(ranges[1])
+                  - self.get_overlap_size(ranges[0], ranges[1]))
+    return result
+
+  def range_len(self, r):
+    return r[1] - r[0] 
+  
+  def get_overlap_size(self, r0, r1):
+    """Returns the amount of overlap between two ranges."""
+    if r0[0] > r1[1] or r1[0] > r0[1]:
+      return 0
+    return min(r0[1], r1[1]) - max(r0[0], r1[0])
 
 
   def get_range_interval(self, stack):
